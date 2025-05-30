@@ -187,7 +187,7 @@ jobs:
         run: |
           if [ -d "./descriptor_parse" ]; then
             cd bitcoinfuzz
-            export CXXFLAGS="-DBITCOIN_CORE -DRUST_MINISCRIPT -DEMBIT"
+            export CXXFLAGS="-DBITCOIN_CORE -DRUST_MINISCRIPT"
             make
             echo "Using corpora for descriptor_parse"
             ASAN_OPTIONS=detect_leaks=0 FUZZ=descriptor_parse ./bitcoinfuzz -runs=1 ../descriptor_parse
@@ -197,7 +197,7 @@ jobs:
         run: |
           if [ -d "./miniscript_parse" ]; then
             cd bitcoinfuzz
-            export CXXFLAGS="-DBITCOIN_CORE -DRUST_MINISCRIPT -DEMBIT"
+            export CXXFLAGS="-DBITCOIN_CORE -DRUST_MINISCRIPT"
             make
             echo "Using corpora for miniscript_parse"
             ASAN_OPTIONS=detect_leaks=0 FUZZ=miniscript_parse ./bitcoinfuzz -runs=1 ../miniscript_parse
@@ -227,7 +227,7 @@ jobs:
         run: |
           if [ -d "./psbt_parse" ]; then
             cd bitcoinfuzz
-            export CXXFLAGS="-DEMBIT -DRUST_BITCOIN -DBTCD"
+            export CXXFLAGS="-DRUST_BITCOIN -DBTCD"
             make
             echo "Using corpora for psbt_parse"
             ASAN_OPTIONS=detect_leaks=0 FUZZ=psbt_parse ./bitcoinfuzz -runs=1 ../psbt_parse
