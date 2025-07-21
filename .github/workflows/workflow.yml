@@ -101,10 +101,10 @@ jobs:
           fi
           cd bitcoinfuzz/modules/bitcoin && make
 
-      - name: Build - bolt11mutator
+      - name: Build - custommutator
         timeout-minutes: 40
         run: |
-          cd bitcoinfuzz/modules/bolt11mutator && make
+          cd bitcoinfuzz/modules/custommutator && make
 
       - name: Build - rust bitcoin
         timeout-minutes: 5
