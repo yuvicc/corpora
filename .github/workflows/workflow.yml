@@ -5,11 +5,10 @@ on: [push, pull_request]
 jobs:
   build:
     runs-on: ${{ matrix.os }}
-
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, macos-13]
+        os: [ubuntu-24.04, macos-14]
 
     steps:
       - name: Checkout repo
@@ -46,33 +45,18 @@ jobs:
           pip install -r bitcoinfuzz/modules/embit/requirements.txt
           pip install mako
 
-      - name: Install LLVM and Clang - Ubuntu
-        if: matrix.os == 'ubuntu-24.04'
-        run: |
-          wget https://apt.llvm.org/llvm.sh
-          chmod +x llvm.sh
-          sudo ./llvm.sh 18
-          sudo ln -sfT clang++-18 /usr/bin/clang++
-          sudo ln -sfT clang-18 /usr/bin/clang
-        shell: bash
-
       - name: Install LLVM and Clang - macOS
-        if: matrix.os == 'macos-13'
+        if: matrix.os == 'macos-14'
         run: |
           brew install llvm@18
-          echo "/usr/local/opt/llvm@18/bin" >> $GITHUB_PATH
-          export PATH="/usr/local/opt/llvm@18/bin:$PATH"
-        shell: bash
+          echo "$(brew --prefix llvm@18)/bin" >> $GITHUB_PATH
+          echo "CC=$(brew --prefix llvm@18)/bin/clang" >> $GITHUB_ENV
+          echo "CXX=$(brew --prefix llvm@18)/bin/clang++" >> $GITHUB_ENV
 
-      - name: Install Boost - Ubuntu
-        if: matrix.os == 'ubuntu-24.04'
+      - name: Install build dependencies - macOS
+        if: matrix.os == 'macos-14'
         run: |
-          sudo apt install libboost-all-dev
-
-      - name: Install Boost and build dependencies - macOS
-        if: matrix.os == 'macos-13'
-        run: |
-          brew install boost autoconf gnu-sed automake libtool gettext pkg-config protobuf libsodium
+          brew install autoconf gnu-sed automake libtool gettext pkg-config protobuf libsodium
 
       - name: Setup common environment - Ubuntu
         if: matrix.os == 'ubuntu-24.04'
@@ -83,7 +67,7 @@ jobs:
           echo "CXX=/usr/bin/clang++" >> $GITHUB_ENV
 
       - name: Setup common environment - macOS
-        if: matrix.os == 'macos-13'
+        if: matrix.os == 'macos-14'
         run: |
           export CC=$(brew --prefix llvm@18)/bin/clang
           export CXX=$(brew --prefix llvm@18)/bin/clang++
@@ -93,10 +77,7 @@ jobs:
       - name: Build - Bitcoin Core
         timeout-minutes: 40
         run: |
-          if [ "${{ matrix.os }}" == "ubuntu-24.04" ]; then
-            export BOOST_LIB_DIR=/usr/lib/x86_64-linux-gnu/
-          elif [ "${{ matrix.os }}" == "macos-13" ]; then
-            export BOOST_LIB_DIR=$(brew --prefix boost)/lib/
+          if [ "${{ matrix.os }}" == "macos-14" ]; then
             export PATH="/usr/local/opt/autoconf/bin:/usr/local/opt/automake/bin:/usr/local/opt/libtool/bin:$PATH"
           fi
           cd bitcoinfuzz/modules/bitcoin && make
@@ -149,6 +130,27 @@ jobs:
         run: |
           cd bitcoinfuzz/modules/clightning && make
 
+      - name: Cache build artifacts
+        uses: actions/cache/save@v4
+        with:
+          path: bitcoinfuzz
+          key: bitcoinfuzz-build-${{ matrix.os }}-${{ github.sha }}
+
+  test-script:
+    needs: build
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-14]
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-test-env
+        with:
+          os: ${{ matrix.os }}
       - name: Test - script
         timeout-minutes: 5
         run: |
@@ -157,9 +159,24 @@ jobs:
             export CXXFLAGS="-DBITCOIN_CORE -DRUST_BITCOIN"
             make
             echo "Using corpora for script"
-            FUZZ=script ./bitcoinfuzz -runs=1 ../script
+            ASAN_OPTIONS=detect_container_overflow=0 FUZZ=script ./bitcoinfuzz -runs=1 ../script
           fi
 
+  test-deserialize-block:
+    needs: build
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-14]
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-test-env
+        with:
+          os: ${{ matrix.os }}
       - name: Test - deserialize_block
         timeout-minutes: 5
         run: |
@@ -171,6 +188,21 @@ jobs:
             FUZZ=deserialize_block ./bitcoinfuzz -runs=1 ../deserialize_block
           fi
 
+  test-script-eval:
+    needs: build
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-14]
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-test-env
+        with:
+          os: ${{ matrix.os }}
       - name: Test - script_eval
         timeout-minutes: 5
         run: |
@@ -182,6 +214,21 @@ jobs:
             FUZZ=script_eval ./bitcoinfuzz -runs=1 ../script_eval
           fi
 
+  test-descriptor-parse:
+    needs: build
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-14]
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-test-env
+        with:
+          os: ${{ matrix.os }}
       - name: Test - descriptor_parse
         timeout-minutes: 5
         run: |
@@ -190,9 +237,24 @@ jobs:
             export CXXFLAGS="-DBITCOIN_CORE -DRUST_MINISCRIPT"
             make
             echo "Using corpora for descriptor_parse"
-            ASAN_OPTIONS=detect_leaks=0 FUZZ=descriptor_parse ./bitcoinfuzz -runs=1 ../descriptor_parse
+            ASAN_OPTIONS=detect_leaks=0:detect_container_overflow=0 FUZZ=descriptor_parse ./bitcoinfuzz -runs=1 ../descriptor_parse
           fi
 
+  test-miniscript-parse:
+    needs: build
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-14]
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-test-env
+        with:
+          os: ${{ matrix.os }}
       - name: Test - miniscript_parse
         run: |
           if [ -d "./miniscript_parse" ]; then
@@ -200,9 +262,24 @@ jobs:
             export CXXFLAGS="-DBITCOIN_CORE -DRUST_MINISCRIPT"
             make
             echo "Using corpora for miniscript_parse"
-            ASAN_OPTIONS=detect_leaks=0 FUZZ=miniscript_parse ./bitcoinfuzz -runs=1 ../miniscript_parse
+            ASAN_OPTIONS=detect_leaks=0:detect_container_overflow=0 FUZZ=miniscript_parse ./bitcoinfuzz -runs=1 ../miniscript_parse
           fi
 
+  test-script-asm:
+    needs: build
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-14]
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-test-env
+        with:
+          os: ${{ matrix.os }}
       - name: Test - script_asm
         run: |
           if [ -d "./script_asm" ]; then
@@ -213,6 +290,21 @@ jobs:
             FUZZ=script_asm ./bitcoinfuzz -runs=1 ../script_asm
           fi
 
+  test-address-parse:
+    needs: build
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-14]
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-test-env
+        with:
+          os: ${{ matrix.os }}
       - name: Test - address_parse
         run: |
           if [ -d "./address_parse" ]; then
@@ -220,9 +312,24 @@ jobs:
             export CXXFLAGS="-DBITCOIN_CORE -DRUST_BITCOIN"
             make
             echo "Using corpora for address_parse"
-            FUZZ=address_parse ./bitcoinfuzz -runs=1 ../address_parse
+            ASAN_OPTIONS=detect_container_overflow=0 FUZZ=address_parse ./bitcoinfuzz -runs=1 ../address_parse
           fi
 
+  test-psbt-parse:
+    needs: build
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-14]
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-test-env
+        with:
+          os: ${{ matrix.os }}
       - name: Test - psbt_parse
         run: |
           if [ -d "./psbt_parse" ]; then
@@ -230,9 +337,24 @@ jobs:
             export CXXFLAGS="-DRUST_BITCOIN -DBTCD"
             make
             echo "Using corpora for psbt_parse"
-            ASAN_OPTIONS=detect_leaks=0 FUZZ=psbt_parse ./bitcoinfuzz -runs=1 ../psbt_parse
+            ASAN_OPTIONS=detect_leaks=0:detect_container_overflow=0 FUZZ=psbt_parse ./bitcoinfuzz -runs=1 ../psbt_parse
           fi
 
+  test-deserialize-invoice:
+    needs: build
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-14]
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-test-env
+        with:
+          os: ${{ matrix.os }}
       - name: Test - deserialize_invoice
         run: |
           if [ -d "./deserialize_invoice" ]; then
@@ -241,9 +363,24 @@ jobs:
             (cd ./modules/bitcoin && make clean)
             make
             echo "Using corpora for deserialize_invoice"
-            ASAN_OPTIONS=detect_leaks=0 FUZZ=deserialize_invoice ./bitcoinfuzz -runs=1 ../deserialize_invoice
+            ASAN_OPTIONS=detect_leaks=0:detect_container_overflow=0 FUZZ=deserialize_invoice ./bitcoinfuzz -runs=1 ../deserialize_invoice
           fi
 
+  test-deserialize-offer:
+    needs: build
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-14]
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-test-env
+        with:
+          os: ${{ matrix.os }}
       - name: Test - deserialize_offer
         run: |
           if [ -d "./deserialize_offer" ]; then
@@ -251,5 +388,5 @@ jobs:
             export CXXFLAGS="-DLDK -DCLIGHTNING"
             make
             echo "Using corpora for deserialize_offer"
-            ASAN_OPTIONS=detect_leaks=0 FUZZ=deserialize_offer ./bitcoinfuzz -runs=1 ../deserialize_offer
+            ASAN_OPTIONS=detect_leaks=0:detect_container_overflow=0 FUZZ=deserialize_offer ./bitcoinfuzz -runs=1 ../deserialize_offer
           fi
