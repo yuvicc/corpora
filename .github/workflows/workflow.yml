@@ -363,7 +363,7 @@ jobs:
             (cd ./modules/bitcoin && make clean)
             make
             echo "Using corpora for deserialize_invoice"
-            ASAN_OPTIONS=detect_leaks=0:detect_container_overflow=0 FUZZ=deserialize_invoice ./bitcoinfuzz -runs=1 ../deserialize_invoice
+            ASAN_OPTIONS=detect_leaks=0:detect_container_overflow=0 FUZZ=deserialize_invoice ./bitcoinfuzz -runs=1 ../deserialize_invoice_clean
           fi
 
   test-deserialize-offer:
