@@ -237,7 +237,7 @@ jobs:
             export CXXFLAGS="-DBITCOIN_CORE -DRUST_MINISCRIPT"
             make
             echo "Using corpora for descriptor_parse"
-            ASAN_OPTIONS=detect_leaks=0:detect_container_overflow=0 FUZZ=descriptor_parse ./bitcoinfuzz -runs=1 ../descriptor_parse
+            ASAN_OPTIONS=detect_leaks=0:detect_container_overflow=0 FUZZ=descriptor_parse ./bitcoinfuzz -runs=1 ../descriptor_parse_clean
           fi
 
   test-miniscript-parse:
@@ -262,7 +262,7 @@ jobs:
             export CXXFLAGS="-DBITCOIN_CORE -DRUST_MINISCRIPT"
             make
             echo "Using corpora for miniscript_parse"
-            ASAN_OPTIONS=detect_leaks=0:detect_container_overflow=0 FUZZ=miniscript_parse ./bitcoinfuzz -runs=1 ../miniscript_parse
+            ASAN_OPTIONS=detect_leaks=0:detect_container_overflow=0 FUZZ=miniscript_parse ./bitcoinfuzz -runs=1 ../miniscript_parse_clean
           fi
 
   test-script-asm:
@@ -363,7 +363,7 @@ jobs:
             (cd ./modules/bitcoin && make clean)
             make
             echo "Using corpora for deserialize_invoice"
-            ASAN_OPTIONS=detect_leaks=0:detect_container_overflow=0 FUZZ=deserialize_invoice ./bitcoinfuzz -runs=1 ../deserialize_invoice
+            ASAN_OPTIONS=detect_leaks=0:detect_container_overflow=0 FUZZ=deserialize_invoice ./bitcoinfuzz -runs=1 ../deserialize_invoice_clean
           fi
 
   test-deserialize-offer:
