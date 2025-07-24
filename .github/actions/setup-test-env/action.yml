@@ -1,0 +1,25 @@
+name: Setup Test Environment
+description: Sets up the environment for a test job, including repo checkout, cache restore, and macOS-specific setup.
+
+inputs:
+  os:
+    description: Operating system
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Restore build artifacts
+      uses: actions/cache/restore@v4
+      with:
+        path: bitcoinfuzz
+        key: bitcoinfuzz-build-${{ inputs.os }}-${{ github.sha }}
+
+    - name: Setup environment - macOS
+      if: ${{ inputs.os == 'macos-14' }}
+      shell: bash
+      run: |
+        brew install llvm@18
+        echo "$(brew --prefix llvm@18)/bin" >> $GITHUB_PATH
+        echo "CC=$(brew --prefix llvm@18)/bin/clang" >> $GITHUB_ENV
+        echo "CXX=$(brew --prefix llvm@18)/bin/clang++" >> $GITHUB_ENV
