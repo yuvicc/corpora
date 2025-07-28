@@ -385,7 +385,8 @@ jobs:
         run: |
           if [ -d "./deserialize_offer" ]; then
             cd bitcoinfuzz
-            export CXXFLAGS="-DLDK -DCLIGHTNING"
+            export CXXFLAGS="-DLDK -DCLIGHTNING -DCUSTOM_MUTATOR_BOLT12_OFFER"
+            (cd ./modules/bitcoin && make clean)
             make
             echo "Using corpora for deserialize_offer"
             ASAN_OPTIONS=detect_leaks=0:detect_container_overflow=0 FUZZ=deserialize_offer ./bitcoinfuzz -runs=1 ../deserialize_offer
