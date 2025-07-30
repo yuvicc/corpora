@@ -31,6 +31,12 @@ jobs:
         with:
           go-version: "stable"
 
+      - name: Set up JDK 21
+        uses: actions/setup-java@v3
+        with:
+          distribution: "temurin"
+          java-version: "21"
+
       - name: Install .NET SDK
         uses: actions/setup-dotnet@v4
         with:
@@ -130,19 +136,75 @@ jobs:
         run: |
           cd bitcoinfuzz/modules/clightning && make
 
+      - name: Build - eclair
+        timeout-minutes: 5
+        run: |
+          cd bitcoinfuzz/modules/eclair && make
+
       - name: Cache build artifacts
         uses: actions/cache/save@v4
         with:
           path: bitcoinfuzz
           key: bitcoinfuzz-build-${{ matrix.os }}-${{ github.sha }}
 
-  test-script:
+  test:
     needs: build
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-24.04, macos-14]
+        test:
+          - corpus: "script"
+            target: "script"
+            cxxflags: "-DBITCOIN_CORE -DRUST_BITCOIN"
+            asan_options: "detect_container_overflow=0"
+          - corpus: "deserialize_block"
+            target: "deserialize_block"
+            cxxflags: "-DBITCOIN_CORE -DRUST_BITCOIN -DBTCD"
+            asan_options: ""
+          - corpus: "script_eval"
+            target: "script_eval"
+            cxxflags: "-DBITCOIN_CORE -DBTCD"
+            asan_options: ""
+          - corpus: "descriptor_parse_clean"
+            target: "descriptor_parse"
+            cxxflags: "-DBITCOIN_CORE -DRUST_MINISCRIPT"
+            asan_options: "detect_leaks=0:detect_container_overflow=0"
+          - corpus: "miniscript_parse_clean"
+            target: "miniscript_parse"
+            cxxflags: "-DBITCOIN_CORE -DRUST_MINISCRIPT"
+            asan_options: "detect_leaks=0:detect_container_overflow=0"
+          - corpus: "script_asm"
+            target: "script_asm"
+            cxxflags: "-DBITCOIN_CORE -DBTCD"
+            asan_options: ""
+          - corpus: "address_parse"
+            target: "address_parse"
+            cxxflags: "-DBITCOIN_CORE -DRUST_BITCOIN -DBTCD"
+            asan_options: "detect_container_overflow=0"
+          - corpus: "psbt_parse_clean"
+            target: "psbt_parse"
+            cxxflags: "-DBITCOIN_CORE -DRUST_BITCOIN -DBTCD"
+            asan_options: "detect_leaks=0:detect_container_overflow=0"
+          - corpus: "cmpctblocks_parse"
+            target: "cmpctblocks_parse"
+            cxxflags: "-DBITCOIN_CORE -DRUST_BITCOIN"
+            asan_options: "detect_leaks=0:detect_container_overflow=0"
+          - corpus: "parse_p2p_message"
+            target: "parse_p2p_message"
+            cxxflags: "-DRUST_BITCOIN -DBTCD -DCUSTOM_MUTATOR_P2P_MESSAGE"
+            asan_options: "detect_leaks=0:detect_container_overflow=0"
+          - corpus: "deserialize_invoice_clean"
+            target: "deserialize_invoice"
+            cxxflags: "-DLDK -DLND -DCLIGHTNING -DECLAIR -DCUSTOM_MUTATOR_BOLT11"
+            asan_options: "detect_leaks=0:detect_container_overflow=0"
+            pre_build: "(cd ./bitcoinfuzz/modules/bitcoin && make clean)"
+          - corpus: "deserialize_offer"
+            target: "deserialize_offer"
+            cxxflags: "-DLDK -DCLIGHTNING -DCUSTOM_MUTATOR_BOLT12_OFFER"
+            asan_options: "detect_leaks=0:detect_container_overflow=0"
+            pre_build: "(cd ./bitcoinfuzz/modules/bitcoin && make clean)"
 
     steps:
       - name: Checkout repo
@@ -151,243 +213,13 @@ jobs:
       - uses: ./.github/actions/setup-test-env
         with:
           os: ${{ matrix.os }}
-      - name: Test - script
+
+      - name: Pre-build step
+        if: matrix.test.pre_build != ''
+        timeout-minutes: 5
+        run: ${{ matrix.test.pre_build }}
+
+      - name: Test - ${{ matrix.test.target }}
         timeout-minutes: 5
         run: |
-          if [ -d "./script" ]; then
-            cd bitcoinfuzz
-            export CXXFLAGS="-DBITCOIN_CORE -DRUST_BITCOIN"
-            make
-            echo "Using corpora for script"
-            ASAN_OPTIONS=detect_container_overflow=0 FUZZ=script ./bitcoinfuzz -runs=1 ../script
-          fi
-
-  test-deserialize-block:
-    needs: build
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-24.04, macos-14]
-
-    steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
-
-      - uses: ./.github/actions/setup-test-env
-        with:
-          os: ${{ matrix.os }}
-      - name: Test - deserialize_block
-        timeout-minutes: 5
-        run: |
-          if [ -d "./deserialize_block" ]; then
-            cd bitcoinfuzz
-            export CXXFLAGS="-DBITCOIN_CORE -DRUST_BITCOIN -DBTCD"
-            make
-            echo "Using corpora for deserialize_block"
-            FUZZ=deserialize_block ./bitcoinfuzz -runs=1 ../deserialize_block
-          fi
-
-  test-script-eval:
-    needs: build
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-24.04, macos-14]
-
-    steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
-
-      - uses: ./.github/actions/setup-test-env
-        with:
-          os: ${{ matrix.os }}
-      - name: Test - script_eval
-        timeout-minutes: 5
-        run: |
-          if [ -d "./script_eval" ]; then
-            cd bitcoinfuzz
-            export CXXFLAGS="-DBITCOIN_CORE -DBTCD"
-            make
-            echo "Using corpora for script_eval"
-            FUZZ=script_eval ./bitcoinfuzz -runs=1 ../script_eval
-          fi
-
-  test-descriptor-parse:
-    needs: build
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-24.04, macos-14]
-
-    steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
-
-      - uses: ./.github/actions/setup-test-env
-        with:
-          os: ${{ matrix.os }}
-      - name: Test - descriptor_parse
-        timeout-minutes: 5
-        run: |
-          if [ -d "./descriptor_parse" ]; then
-            cd bitcoinfuzz
-            export CXXFLAGS="-DBITCOIN_CORE -DRUST_MINISCRIPT"
-            make
-            echo "Using corpora for descriptor_parse"
-            ASAN_OPTIONS=detect_leaks=0:detect_container_overflow=0 FUZZ=descriptor_parse ./bitcoinfuzz -runs=1 ../descriptor_parse_clean
-          fi
-
-  test-miniscript-parse:
-    needs: build
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-24.04, macos-14]
-
-    steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
-
-      - uses: ./.github/actions/setup-test-env
-        with:
-          os: ${{ matrix.os }}
-      - name: Test - miniscript_parse
-        run: |
-          if [ -d "./miniscript_parse" ]; then
-            cd bitcoinfuzz
-            export CXXFLAGS="-DBITCOIN_CORE -DRUST_MINISCRIPT"
-            make
-            echo "Using corpora for miniscript_parse"
-            ASAN_OPTIONS=detect_leaks=0:detect_container_overflow=0 FUZZ=miniscript_parse ./bitcoinfuzz -runs=1 ../miniscript_parse_clean
-          fi
-
-  test-script-asm:
-    needs: build
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-24.04, macos-14]
-
-    steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
-
-      - uses: ./.github/actions/setup-test-env
-        with:
-          os: ${{ matrix.os }}
-      - name: Test - script_asm
-        run: |
-          if [ -d "./script_asm" ]; then
-            cd bitcoinfuzz
-            export CXXFLAGS="-DBITCOIN_CORE -DBTCD"
-            make
-            echo "Using corpora for script_asm"
-            FUZZ=script_asm ./bitcoinfuzz -runs=1 ../script_asm
-          fi
-
-  test-address-parse:
-    needs: build
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-24.04, macos-14]
-
-    steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
-
-      - uses: ./.github/actions/setup-test-env
-        with:
-          os: ${{ matrix.os }}
-      - name: Test - address_parse
-        run: |
-          if [ -d "./address_parse" ]; then
-            cd bitcoinfuzz
-            export CXXFLAGS="-DBITCOIN_CORE -DRUST_BITCOIN"
-            make
-            echo "Using corpora for address_parse"
-            ASAN_OPTIONS=detect_container_overflow=0 FUZZ=address_parse ./bitcoinfuzz -runs=1 ../address_parse
-          fi
-
-  test-psbt-parse:
-    needs: build
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-24.04, macos-14]
-
-    steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
-
-      - uses: ./.github/actions/setup-test-env
-        with:
-          os: ${{ matrix.os }}
-      - name: Test - psbt_parse
-        run: |
-          if [ -d "./psbt_parse" ]; then
-            cd bitcoinfuzz
-            export CXXFLAGS="-DRUST_BITCOIN -DBTCD"
-            make
-            echo "Using corpora for psbt_parse"
-            ASAN_OPTIONS=detect_leaks=0:detect_container_overflow=0 FUZZ=psbt_parse ./bitcoinfuzz -runs=1 ../psbt_parse_clean
-          fi
-
-  test-deserialize-invoice:
-    needs: build
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-24.04, macos-14]
-
-    steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
-
-      - uses: ./.github/actions/setup-test-env
-        with:
-          os: ${{ matrix.os }}
-      - name: Test - deserialize_invoice
-        run: |
-          if [ -d "./deserialize_invoice" ]; then
-            cd bitcoinfuzz
-            export CXXFLAGS="-DLDK -DLND -DCLIGHTNING -DCUSTOM_MUTATOR_BOLT11"
-            (cd ./modules/bitcoin && make clean)
-            make
-            echo "Using corpora for deserialize_invoice"
-            ASAN_OPTIONS=detect_leaks=0:detect_container_overflow=0 FUZZ=deserialize_invoice ./bitcoinfuzz -runs=1 ../deserialize_invoice_clean
-          fi
-
-  test-deserialize-offer:
-    needs: build
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-24.04, macos-14]
-
-    steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
-
-      - uses: ./.github/actions/setup-test-env
-        with:
-          os: ${{ matrix.os }}
-      - name: Test - deserialize_offer
-        run: |
-          if [ -d "./deserialize_offer" ]; then
-            cd bitcoinfuzz
-            export CXXFLAGS="-DLDK -DCLIGHTNING -DCUSTOM_MUTATOR_BOLT12_OFFER"
-            (cd ./modules/bitcoin && make clean)
-            make
-            echo "Using corpora for deserialize_offer"
-            ASAN_OPTIONS=detect_leaks=0:detect_container_overflow=0 FUZZ=deserialize_offer ./bitcoinfuzz -runs=1 ../deserialize_offer
-          fi
+          FUZZ=${{ matrix.test.target }} ./.github/scripts/run-fuzz.sh "${{ matrix.test.corpus }}" "${{ matrix.test.target }}" "${{ matrix.test.cxxflags }}" "${{ matrix.test.asan_options }}"
