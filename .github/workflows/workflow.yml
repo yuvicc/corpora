@@ -141,6 +141,11 @@ jobs:
         run: |
           cd bitcoinfuzz/modules/eclair && make
 
+      - name: Build - lightning-kmp
+        timeout-minutes: 5
+        run: |
+          cd bitcoinfuzz/modules/lightningkmp && make
+
       - name: Cache build artifacts
         uses: actions/cache/save@v4
         with:
@@ -197,7 +202,7 @@ jobs:
             asan_options: "detect_leaks=0:detect_container_overflow=0"
           - corpus: "deserialize_invoice_clean"
             target: "deserialize_invoice"
-            cxxflags: "-DLDK -DLND -DCLIGHTNING -DECLAIR -DCUSTOM_MUTATOR_BOLT11"
+            cxxflags: "-DLDK -DLND -DCLIGHTNING -DECLAIR -DLIGHTNING_KMP -DCUSTOM_MUTATOR_BOLT11"
             asan_options: "detect_leaks=0:detect_container_overflow=0"
             pre_build: "(cd ./bitcoinfuzz/modules/bitcoin && make clean)"
           - corpus: "deserialize_offer"
